@@ -2,6 +2,7 @@ package workshop.uart
 
 import spinal.core._
 import spinal.lib._
+import spinal.lib.fsm._
 
 case class UartRxGenerics( preSamplingSize: Int = 1,
                            samplingSize: Int = 5,
@@ -12,10 +13,6 @@ case class UartRxGenerics( preSamplingSize: Int = 1,
 
   if ((samplingSize % 2) == 0)
     SpinalWarning(s"It's not nice to have a even samplingSize value at ${ScalaLocated.short} (because of the majority vote)")
-}
-
-object UartCtrlRxState extends SpinalEnum {
-  val IDLE, START, DATA, STOP = newElement()
 }
 
 case class UartCtrlRx(generics : UartRxGenerics) extends Component{
@@ -71,39 +68,44 @@ case class UartCtrlRx(generics : UartRxGenerics) extends Component{
   }
 
   // Statemachine that use all precedent area
-  val stateMachine = new Area {
-    import UartCtrlRxState._
-
-    val state = Reg(UartCtrlRxState) init IDLE
+  val stateMachine = new StateMachine {
     val buffer = Reg(io.read.payload)
-
     io.read.valid := False
 
-    switch(state) {
-      is(IDLE) {
+    val IDLE: State = new State with EntryPoint {
+      whenIsActive {
         when(sampler.tick && !sampler.value) {
           bitTimer.recenter := True
-          state := START
+          goto(START)
         }
       }
-      is(START) {
+    }
+
+    val START: State = new State {
+      whenIsActive {
         when(bitTimer.tick) {
           bitCounter.clear := True
-          state := DATA
+          goto(DATA)
         }
       }
-      is(DATA) {
-        when(bitTimer.tick) {
+    }
+
+    val DATA: State = new State {
+      whenIsActive {
+        when (bitTimer.tick) {
           buffer(bitCounter.value) := sampler.value
           when(bitCounter.value === 7) {
-            state := STOP
+            goto(STOP)
           }
         }
       }
-      is(STOP) {
+    }
+
+    val STOP: State = new State {
+      whenIsActive {
         when(bitTimer.tick) {
-          state := IDLE
           io.read.valid := True
+          goto(IDLE)
         }
       }
     }

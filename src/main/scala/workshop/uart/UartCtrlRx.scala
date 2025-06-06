@@ -72,41 +72,38 @@ case class UartCtrlRx(generics : UartRxGenerics) extends Component{
     val buffer = Reg(io.read.payload)
     io.read.valid := False
 
-    val IDLE: State = new State with EntryPoint {
-      whenIsActive {
-        when(sampler.tick && !sampler.value) {
-          bitTimer.recenter := True
-          goto(START)
+    val IDLE = new State with EntryPoint
+    val START = new State
+    val DATA = new State
+    val STOP = new State
+
+    IDLE.whenIsActive {
+      when(sampler.tick && !sampler.value) {
+        bitTimer.recenter := True
+        goto(START)
+      }
+    }
+
+    START.whenIsActive {
+      when(bitTimer.tick) {
+        bitCounter.clear := True
+        goto(DATA)
+      }
+    }
+
+    DATA.whenIsActive {
+      when(bitTimer.tick) {
+        buffer(bitCounter.value) := sampler.value
+        when(bitCounter.value === 7) {
+          goto(STOP)
         }
       }
     }
 
-    val START: State = new State {
-      whenIsActive {
-        when(bitTimer.tick) {
-          bitCounter.clear := True
-          goto(DATA)
-        }
-      }
-    }
-
-    val DATA: State = new State {
-      whenIsActive {
-        when (bitTimer.tick) {
-          buffer(bitCounter.value) := sampler.value
-          when(bitCounter.value === 7) {
-            goto(STOP)
-          }
-        }
-      }
-    }
-
-    val STOP: State = new State {
-      whenIsActive {
-        when(bitTimer.tick) {
-          io.read.valid := True
-          goto(IDLE)
-        }
+    STOP.whenIsActive {
+      when(bitTimer.tick) {
+        io.read.valid := True
+        goto(IDLE)
       }
     }
   }
